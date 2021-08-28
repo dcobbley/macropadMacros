@@ -1,12 +1,7 @@
 """
-A fairly straightforward macro/hotkey program for Adafruit MACROPAD.
-Macro key setups are stored in the /macros folder (configurable below),
-load up just the ones you're likely to use. Plug into computer's USB port,
-use dial to select an application macro set, press MACROPAD keys to send
-key sequences.
+Originally sourced from:
+https://github.com/adafruit/Adafruit_Learning_System_Guides/blob/main/Macropad_Hotkeys/code.py
 """
-
-# pylint: disable=import-error, unused-import, too-few-public-methods
 
 import os
 import time
@@ -16,13 +11,9 @@ from adafruit_display_shapes.rect import Rect
 from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 
-
 # CONFIGURABLES ------------------------
 
 MACRO_FOLDER = '/macros'
-
-
-# CLASSES AND FUNCTIONS ----------------
 
 class App:
     """ Class representing a host-side application, for which we have a set
@@ -49,6 +40,8 @@ class App:
 
 
 # INITIALIZATION -----------------------
+
+FADE_TIMEOUT = 5
 
 macropad = MacroPad()
 macropad.display.auto_refresh = False
@@ -94,16 +87,33 @@ last_encoder_switch = macropad.encoder_switch_debounced.pressed
 app_index = 0
 apps[app_index].switch()
 
+last_brightness = brightness = 1.0
+lastPressed = time.time()
 
 # MAIN LOOP ----------------------------
-
+macropad.display.bus.send(int(0xAF), "")
 while True:
+    current_time = time.time()
+    if brightness > 0 and lastPressed + FADE_TIMEOUT < current_time:
+        brightness = brightness - 0.0001
+
+    if last_brightness != brightness:
+        last_brightness = brightness = max(0, min(1, brightness))
+        macropad.display.brightness = macropad.pixels.brightness = brightness
+        macropad.pixels.show()
+        if brightness == 0:
+            macropad.display.bus.send(int(0xAE), "")
+        elif brightness == 1:
+            macropad.display.bus.send(int(0xAF), "")
+
     # Read encoder position. If it's changed, switch apps.
     position = macropad.encoder
     if position != last_position:
         app_index = position % len(apps)
         apps[app_index].switch()
         last_position = position
+        lastPressed = current_time
+        brightness = 1
 
     # Handle encoder button. If state has changed, and if there's a
     # corresponding macro, set up variables to act on this just like
@@ -126,7 +136,8 @@ while True:
     # If code reaches here, a key or the encoder button WAS pressed/released
     # and there IS a corresponding macro available for it...other situations
     # are avoided by 'continue' statements above which resume the loop.
-
+    lastPressed = current_time
+    brightness = 1
     sequence = apps[app_index].macros[key_number][2]
     if pressed:
         # the sequence is arbitrary-length
